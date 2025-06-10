@@ -1,0 +1,50 @@
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load test environment variables
+dotenv.config({ 
+  path: path.join(__dirname, '..', '.env.local')
+});
+
+// Set NODE_ENV to test
+process.env.NODE_ENV = 'test';
+
+// Global test timeout
+jest.setTimeout(30000);
+
+// Mock console.log in tests to reduce noise
+global.console = {
+  ...console,
+  log: jest.fn(),
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+};
+
+// Global test utilities
+global.testHelpers = {
+  // Helper to create test users
+  createTestUser: async () => {
+    return {
+      id: 'test-user-id',
+      email: 'test@example.com',
+      name: 'Test User'
+    };
+  },
+
+  // Helper to clean up test data
+  cleanupTestData: async () => {
+    // Implementation for cleaning up test data
+    console.log('Cleaning up test data...');
+  }
+};
+
+// Setup and teardown hooks
+beforeAll(async () => {
+  console.log('🧪 Setting up test environment...');
+});
+
+afterAll(async () => {
+  console.log('🧹 Cleaning up test environment...');
+  await global.testHelpers.cleanupTestData();
+});

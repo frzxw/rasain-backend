@@ -1,0 +1,35 @@
+{
+  "preset": "ts-jest",
+  "testEnvironment": "node",
+  "setupFilesAfterEnv": ["<rootDir>/tests/setup.ts"],
+  "testMatch": [
+    "<rootDir>/tests/**/*.test.ts",
+    "<rootDir>/tests/**/*.spec.ts"
+  ],
+  "collectCoverageFrom": [
+    "src/**/*.ts",
+    "!src/**/*.d.ts",
+    "!src/scripts/**",
+    "!src/server.ts"
+  ],
+  "coverageDirectory": "coverage",
+  "coverageReporters": [
+    "text",
+    "lcov",
+    "html"
+  ],
+  "moduleNameMapping": {
+    "@/(.*)": "<rootDir>/src/$1"
+  },
+  "testPathIgnorePatterns": [
+    "<rootDir>/node_modules/",
+    "<rootDir>/dist/"
+  ],
+  "transformIgnorePatterns": [
+    "node_modules/(?!(@supabase)/)"
+  ],
+  "testTimeout": 30000,
+  "verbose": true,
+  "forceExit": true,
+  "detectOpenHandles": true
+}
