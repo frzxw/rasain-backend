@@ -16,18 +16,18 @@ You need Node.js 18 or newer, and a Supabase project.
 cp .env.example .env
 ```
 
-Open `.env` and replace the placeholders. `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` have to be real before migrate. `SEED_USER_PASSWORD` is only needed for the sample users. Nothing in the repo is a working login.
+Open `.env` and replace the placeholders. `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` have to be real before migrate. `DATABASE_URL` is the direct Postgres string from the Supabase dashboard (Project Settings → Database). `SEED_USER_PASSWORD` is the shared password for the three sample cooks. Nothing in the repo is a working login.
 
 ```bash
 npm install
-npm run db:migrate   # schema, then one admin user from ADMIN_EMAIL
+npm run db:migrate   # applies schema.sql, then one admin user from ADMIN_EMAIL
 npm run db:seed      # sample cooks, recipes, pantry items, and posts
 npm run dev          # http://localhost:3000
 ```
 
 `GET /health` returns a short status JSON. `GET /` lists the route groups.
 
-Other scripts: `npm run dev:watch`, `npm run build`, `npm start`, `npm run typecheck`, `npm test`, `npm run db:reset` (clears data, migrates, and seeds again).
+Other scripts: `npm run dev:watch`, `npm run build`, `npm start`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run db:reset` (clears data, migrates, and seeds again).
 
 `.env.local` is loaded after `.env` if you want machine-specific overrides. Both files are gitignored.
 
@@ -59,8 +59,6 @@ Base path is `/api/v1` unless you set `API_VERSION`. Routes marked private need 
 | GET | `/api/v1/users/dashboard` | private |
 | POST | `/api/v1/users/:id/follow` | private |
 | DELETE | `/api/v1/users/:id/follow` | private |
-
-`GET /users/:id` is registered before `GET /users/dashboard`, so a request to `/api/v1/users/dashboard` is handled as a user id today.
 
 **Recipes** — `src/routes/recipes.ts`
 
@@ -102,9 +100,7 @@ Base path is `/api/v1` unless you set `API_VERSION`. Routes marked private need 
 
 **Notifications** — `src/routes/notifications.ts` (all private)
 
-`GET /api/v1/notifications`, `GET /api/v1/notifications/unread-count`, `POST /api/v1/notifications`, `PATCH /api/v1/notifications/:id`, `PATCH /api/v1/notifications/mark-all-read`, `PATCH /api/v1/notifications/bulk-archive`, `DELETE /api/v1/notifications/:id`.
-
-`PATCH /notifications/:id` is registered first, so `/mark-all-read` and `/bulk-archive` are currently handled as an id update.
+`GET /api/v1/notifications`, `GET /api/v1/notifications/unread-count`, `POST /api/v1/notifications`, `PATCH /api/v1/notifications/mark-all-read`, `PATCH /api/v1/notifications/bulk-archive`, `PATCH /api/v1/notifications/:id`, `DELETE /api/v1/notifications/:id`.
 
 **Uploads** — `src/routes/upload.ts` (all private)
 
@@ -124,4 +120,6 @@ src/
 └── server.ts
 ```
 
-SQL files under `src/scripts/` (`01-seed-*.sql` through `10-seed-*.sql`) are sample rows for recipes and posts. They do not create logins. `npm run db:seed` uses `src/scripts/seed.ts` instead.
+`npm run db:migrate` reads `src/scripts/schema.sql` through `DATABASE_URL` and creates the admin in both Supabase Auth and `public.users`, so `POST /api/v1/auth/login` works. `npm run db:seed` adds three sample cooks the same way (`user1@example.com`, `user2@example.com`, `chef.maya@example.com`) plus recipes, pantry items dated from today, and a few posts. The numbered `01-seed-*.sql` files are extra sample rows. The seed script does not run them, and they do not create logins.
+
+`POST /api/v1/auth/reset-password` expects the Supabase recovery `token_hash`, not a session on this server.

@@ -1,7 +1,14 @@
 import { createClient } from '../config/database';
 import { logger } from '../utils/logger';
-import { UserModel, RecipeModel, NotificationModel } from '../models';
+import { RecipeModel, NotificationModel } from '../models';
+import { ensureAccount } from './demoAccounts';
 import { v4 as uuidv4 } from 'uuid';
+
+function daysFromNow(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
 // Sample people. Their shared password comes from SEED_USER_PASSWORD at seed time.
 const sampleUsers = [
@@ -172,16 +179,16 @@ const sampleRecipes = [
 ];
 
 const samplePantryItems = [
-  { name: 'Beras', quantity: 5, unit: 'kg', category: 'Grains' },
-  { name: 'Minyak goreng', quantity: 2, unit: 'liter', category: 'Oil' },
-  { name: 'Gula pasir', quantity: 1, unit: 'kg', category: 'Sweetener' },
-  { name: 'Garam', quantity: 500, unit: 'gram', category: 'Seasoning' },
-  { name: 'Bawang merah', quantity: 1, unit: 'kg', category: 'Vegetables', expiryDate: '2025-07-01' },
-  { name: 'Bawang putih', quantity: 500, unit: 'gram', category: 'Vegetables', expiryDate: '2025-07-01' },
-  { name: 'Cabai merah', quantity: 300, unit: 'gram', category: 'Vegetables', expiryDate: '2025-06-20' },
-  { name: 'Daging sapi', quantity: 2, unit: 'kg', category: 'Meat', expiryDate: '2025-06-15' },
-  { name: 'Ayam', quantity: 1.5, unit: 'kg', category: 'Meat', expiryDate: '2025-06-18' },
-  { name: 'Telur', quantity: 1, unit: 'kg', category: 'Dairy', expiryDate: '2025-06-25' }
+  { name: 'Beras', quantity: '5', unit: 'kg', category: 'Biji-bijian', expiryInDays: 180 },
+  { name: 'Minyak goreng', quantity: '2', unit: 'liter', category: 'Lainnya', expiryInDays: 120 },
+  { name: 'Gula pasir', quantity: '1', unit: 'kg', category: 'Lainnya', expiryInDays: 200 },
+  { name: 'Garam', quantity: '500', unit: 'gram', category: 'Bumbu & Rempah', expiryInDays: 365 },
+  { name: 'Bawang merah', quantity: '1', unit: 'kg', category: 'Sayuran', expiryInDays: 21 },
+  { name: 'Bawang putih', quantity: '500', unit: 'gram', category: 'Sayuran', expiryInDays: 30 },
+  { name: 'Cabai merah', quantity: '300', unit: 'gram', category: 'Sayuran', expiryInDays: 5 },
+  { name: 'Daging sapi', quantity: '2', unit: 'kg', category: 'Daging', expiryInDays: 3 },
+  { name: 'Ayam', quantity: '1.5', unit: 'kg', category: 'Protein', expiryInDays: 4 },
+  { name: 'Telur', quantity: '1', unit: 'kg', category: 'Protein', expiryInDays: 10 }
 ];
 
 async function seedDatabase(): Promise<void> {
@@ -217,12 +224,17 @@ async function seedDatabase(): Promise<void> {
 
     for (const userData of sampleUsers) {
       try {
-        const { user, profile } = await UserModel.createUser({
-          ...userData,
-          password: seedPassword
+        const account = await ensureAccount({
+          email: userData.email,
+          password: seedPassword,
+          name: userData.name,
+          phone: userData.phone
         });
-        createdUsers.push({ user, profile });
-        logger.info(`✅ Created user: ${profile.name} (${user.email})`);
+        createdUsers.push({
+          user: { id: account.id, email: account.email },
+          profile: { name: account.name }
+        });
+        logger.info(`✅ Created user: ${account.name} (${account.email})`);
       } catch (error) {
         logger.error(`❌ Failed to create user ${userData.email}:`, error);
       }
@@ -258,6 +270,11 @@ async function seedDatabase(): Promise<void> {
       logger.info('🥫 Seeding pantry items...');
       const firstUser = createdUsers[0];
 
+      const { data: categories } = await supabase
+        .from('pantry_categories')
+        .select('id, name');
+      const categoryIds = new Map((categories || []).map((category) => [category.name, category.id]));
+
       for (const itemData of samplePantryItems) {
         try {
           const { error } = await supabase
@@ -268,8 +285,8 @@ async function seedDatabase(): Promise<void> {
               name: itemData.name,
               quantity: itemData.quantity,
               unit: itemData.unit,
-              category: itemData.category,
-              expiry_date: itemData.expiryDate || null
+              category_id: categoryIds.get(itemData.category) ?? null,
+              expiration_date: daysFromNow(itemData.expiryInDays)
             });
 
           if (error) {
@@ -312,11 +329,10 @@ async function seedDatabase(): Promise<void> {
             id: uuidv4(),
             user_id: user.user.id,
             content: postData.content,
-            type: postData.type,
-            recipe_id: postData.recipeId || null,
-            likes_count: Math.floor(Math.random() * 10),
-            comments_count: Math.floor(Math.random() * 5),
-            shares_count: Math.floor(Math.random() * 3)
+            category: 'masakan',
+            like_count: 0,
+            comment_count: 0,
+            is_featured: false
           });
 
         if (error) {
