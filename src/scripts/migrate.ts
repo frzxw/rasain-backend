@@ -1,7 +1,26 @@
 import { createClient } from '../config/database';
 import { logger } from '../utils/logger';
+import bcrypt from 'bcryptjs';
 import fs from 'fs/promises';
 import path from 'path';
+
+function adminCredentials(): { email: string; password: string; name: string } {
+  const email = process.env.ADMIN_EMAIL?.trim();
+  const password = process.env.ADMIN_PASSWORD;
+  const name = process.env.ADMIN_NAME?.trim() || 'Admin';
+
+  if (!email || !password) {
+    throw new Error(
+      'Set ADMIN_EMAIL and ADMIN_PASSWORD in your environment before creating the admin user. See .env.example.'
+    );
+  }
+
+  if (password.length < 8) {
+    throw new Error('ADMIN_PASSWORD must be at least 8 characters.');
+  }
+
+  return { email, password, name };
+}
 
 async function runMigrations(): Promise<void> {
   try {
@@ -114,28 +133,29 @@ async function createAdminUser(): Promise<void> {
 
     const supabase = createClient();
 
+    const { email, password, name } = adminCredentials();
+
     // Check if admin user already exists
     const { data: existingUser } = await supabase
       .from('users')
       .select('id')
-      .eq('email', 'admin@rasain.com')
-      .single();
+      .eq('email', email)
+      .maybeSingle();
 
     if (existingUser) {
       logger.info('⚠️  Admin user already exists');
       return;
     }
 
-    // Create admin user
+    // Create admin user. The password stays in the environment and is never logged.
     const adminUserId = '00000000-0000-0000-0000-000000000001';
-    const bcrypt = require('bcryptjs');
-    const passwordHash = await bcrypt.hash('admin123!', 12);
+    const passwordHash = await bcrypt.hash(password, 12);
 
     const { error: userError } = await supabase
       .from('users')
       .insert({
         id: adminUserId,
-        email: 'admin@rasain.com',
+        email,
         password_hash: passwordHash,
         email_verified: true,
         phone_verified: false
@@ -150,7 +170,7 @@ async function createAdminUser(): Promise<void> {
       .from('user_profiles')
       .insert({
         id: adminUserId,
-        name: 'Admin User',
+        name,
         saved_recipes_count: 0,
         posts_count: 0,
         is_notifications_enabled: true,
@@ -162,9 +182,8 @@ async function createAdminUser(): Promise<void> {
       throw profileError;
     }
 
-    logger.info('✅ Admin user created successfully!');
-    logger.info('📧 Email: admin@rasain.com');
-    logger.info('🔑 Password: admin123!');
+    logger.info('✅ Admin user created successfully');
+    logger.info('📧 Email comes from ADMIN_EMAIL. The password is not logged.');
 
   } catch (error) {
     logger.error('❌ Failed to create admin user:', error);

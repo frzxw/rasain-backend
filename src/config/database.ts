@@ -1,3 +1,4 @@
+import './loadEnv';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { Request } from 'express';
 import { AuthenticatedUser } from '@/types';

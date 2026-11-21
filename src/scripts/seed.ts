@@ -3,23 +3,20 @@ import { logger } from '../utils/logger';
 import { UserModel, RecipeModel, NotificationModel } from '../models';
 import { v4 as uuidv4 } from 'uuid';
 
-// Sample data
+// Sample people. Their shared password comes from SEED_USER_PASSWORD at seed time.
 const sampleUsers = [
   {
     email: 'user1@example.com',
-    password: 'password123',
     name: 'Sari Indah',
     phone: '+6281234567890'
   },
   {
-    email: 'user2@example.com', 
-    password: 'password123',
+    email: 'user2@example.com',
     name: 'Budi Santoso',
     phone: '+6281234567891'
   },
   {
     email: 'chef.maya@example.com',
-    password: 'password123',
     name: 'Chef Maya',
     phone: '+6281234567892'
   }
@@ -207,13 +204,23 @@ async function seedDatabase(): Promise<void> {
       return;
     }
 
+    const seedPassword = process.env.SEED_USER_PASSWORD;
+    if (!seedPassword || seedPassword.length < 8) {
+      throw new Error(
+        'Set SEED_USER_PASSWORD (at least 8 characters) before seeding sample users. See .env.example.'
+      );
+    }
+
     // Seed users
     logger.info('👥 Seeding users...');
     const createdUsers = [];
 
     for (const userData of sampleUsers) {
       try {
-        const { user, profile } = await UserModel.createUser(userData);
+        const { user, profile } = await UserModel.createUser({
+          ...userData,
+          password: seedPassword
+        });
         createdUsers.push({ user, profile });
         logger.info(`✅ Created user: ${profile.name} (${user.email})`);
       } catch (error) {
@@ -361,6 +368,17 @@ async function clearData(): Promise<void> {
 
     const supabase = createClient();
 
+    const adminEmail = process.env.ADMIN_EMAIL?.trim();
+    let adminId: string | null = null;
+    if (adminEmail) {
+      const { data: adminUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', adminEmail)
+        .maybeSingle();
+      adminId = adminUser?.id ?? null;
+    }
+
     // Delete in reverse order of dependencies
     const tables = [
       'post_comments',
@@ -379,12 +397,12 @@ async function clearData(): Promise<void> {
 
     for (const table of tables) {
       try {
-        // Don't delete admin user
-        if (table === 'users' || table === 'user_profiles') {
+        // Keep the admin row when ADMIN_EMAIL is set. Profiles share that user id.
+        if ((table === 'users' || table === 'user_profiles') && adminId) {
           const { error } = await supabase
             .from(table)
             .delete()
-            .neq('email', 'admin@rasain.com');
+            .neq('id', adminId);
           
           if (error) {
             logger.warn(`⚠️  Could not clear table ${table}:`, error.message);

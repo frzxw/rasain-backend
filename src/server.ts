@@ -1,13 +1,10 @@
+import '@/config/loadEnv';
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
-import dotenv from 'dotenv';
 import path from 'path';
-
-// Load environment variables
-dotenv.config({ path: '.env.local' });
 
 // Import middleware and routes
 import { errorHandler, notFound } from '@/middleware/errorMiddleware';
