@@ -276,7 +276,7 @@ export interface CreateRecipeRequest {
   image_url?: string;
 }
 
-export interface UpdateRecipeRequest extends Partial<CreateRecipeRequest> {}
+export type UpdateRecipeRequest = Partial<CreateRecipeRequest>;
 
 export interface CreatePantryItemRequest {
   name: string;
@@ -294,7 +294,7 @@ export interface CreatePantryItemRequest {
   image_url?: string;
 }
 
-export interface UpdatePantryItemRequest extends Partial<CreatePantryItemRequest> {}
+export type UpdatePantryItemRequest = Partial<CreatePantryItemRequest>;
 
 export interface CreateCommunityPostRequest {
   content?: string;
@@ -303,7 +303,7 @@ export interface CreateCommunityPostRequest {
   tagged_ingredients?: string[];
 }
 
-export interface UpdateCommunityPostRequest extends Partial<CreateCommunityPostRequest> {}
+export type UpdateCommunityPostRequest = Partial<CreateCommunityPostRequest>;
 
 export interface CreateChatMessageRequest {
   conversation_id?: string;
@@ -337,6 +337,8 @@ export interface RecipeFilters {
 
 // Extended Express Request type
 declare global {
+  // Express augments its Request type through this namespace.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: AuthenticatedUser;

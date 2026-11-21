@@ -81,12 +81,11 @@ export const getAuthenticatedUser = async (req: Request): Promise<AuthenticatedU
     }
 
     const token = authHeader.substring(7);
-    
-    // Verify the JWT token with Supabase
+
     const { data: { user }, error } = await supabase.auth.getUser(token);
-    
+
     if (error || !user) {
-      return null;
+      throw new Error('Invalid token');
     }
 
     // Get user profile
@@ -98,13 +97,16 @@ export const getAuthenticatedUser = async (req: Request): Promise<AuthenticatedU
 
     return {
       id: user.id,
-      email: user.email!,
+      email: user.email || '',
       user_metadata: user.user_metadata,
       profile: profile || undefined
     };
   } catch (error) {
+    if (error instanceof Error && error.message === 'Invalid token') {
+      throw error;
+    }
     console.error('Auth error:', error);
-    return null;
+    throw new Error('Invalid token');
   }
 };
 

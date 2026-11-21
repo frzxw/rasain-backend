@@ -2,10 +2,13 @@ import { Request, Response, NextFunction } from 'express';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import logger from '@/utils/logger';
 
-// Create rate limiter
+// RATE_LIMIT_WINDOW_MS is milliseconds. rate-limiter-flexible wants seconds.
+const windowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10);
+const windowSeconds = Math.max(1, Math.round((Number.isFinite(windowMs) ? windowMs : 900000) / 1000));
+
 const rateLimiter = new RateLimiterMemory({
-  points: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'), // Number of requests
-  duration: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900'), // Per 15 minutes (900 seconds)
+  points: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
+  duration: windowSeconds
 });
 
 // Middleware function
@@ -25,6 +28,7 @@ const rateLimiterMiddleware = async (req: Request, res: Response, next: NextFunc
     res.set('Retry-After', String(secs));
     res.status(429).json({
       success: false,
+      message: 'Too many requests, please try again later',
       error: {
         message: 'Too many requests, please try again later',
         retryAfter: secs

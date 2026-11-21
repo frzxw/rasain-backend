@@ -6,7 +6,16 @@ export const registerSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).max(128).required(),
-  phone: Joi.string().pattern(/^[\+]?[1-9][\d]{0,15}$/).optional()
+  phone: Joi.string().pattern(/^[+]?[1-9][\d]{0,15}$/).optional()
+});
+
+export const forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().required()
+});
+
+export const resetPasswordSchema = Joi.object({
+  token: Joi.string().min(10).required(),
+  password: Joi.string().min(6).max(128).required()
 });
 
 // User login validation
@@ -18,7 +27,7 @@ export const loginSchema = Joi.object({
 // User profile update validation
 export const updateProfileSchema = Joi.object({
   name: Joi.string().min(2).max(100).optional(),
-  phone: Joi.string().pattern(/^[\+]?[1-9][\d]{0,15}$/).optional(),
+  phone: Joi.string().pattern(/^[+]?[1-9][\d]{0,15}$/).optional(),
   bio: Joi.string().max(500).optional(),
   is_notifications_enabled: Joi.boolean().optional(),
   language: Joi.string().valid('id', 'en').optional(),
@@ -168,6 +177,7 @@ export const validate = (schema: Joi.ObjectSchema) => {
 
       res.status(400).json({
         success: false,
+        message: 'Validation failed',
         error: {
           message: 'Validation failed',
           details: errors
@@ -235,6 +245,7 @@ export const validateRequest = (validationRules: {
     if (errors.length > 0) {
       res.status(400).json({
         success: false,
+        message: 'Validation failed',
         error: {
           message: 'Validation failed',
           details: errors
@@ -263,6 +274,7 @@ export const validateQuery = (schema: Joi.ObjectSchema) => {
 
       res.status(400).json({
         success: false,
+        message: 'Query validation failed',
         error: {
           message: 'Query validation failed',
           details: errors

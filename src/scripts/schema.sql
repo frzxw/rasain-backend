@@ -22,13 +22,18 @@ CREATE TYPE message_sender AS ENUM ('user', 'ai', 'assistant');
 
 -- Notification types
 CREATE TYPE notification_type AS ENUM (
-    'recipe_recommendation', 
-    'expiration_warning', 
-    'low_stock', 
-    'new_recipe', 
-    'review', 
-    'achievement', 
-    'system'
+    'recipe_recommendation',
+    'expiration_warning',
+    'low_stock',
+    'new_recipe',
+    'review',
+    'achievement',
+    'system',
+    'recipe_like',
+    'recipe_comment',
+    'recipe_share',
+    'follow',
+    'reminder'
 );
 
 -- =========================================
@@ -329,18 +334,37 @@ CREATE TABLE chat_messages (
 -- NOTIFICATIONS
 -- =========================================
 
+-- Uploaded images. The API writes one row per file.
+CREATE TABLE uploads (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    original_name TEXT,
+    mime_type TEXT,
+    size INTEGER,
+    url TEXT,
+    type VARCHAR(50),
+    recipe_id UUID REFERENCES recipes(id) ON DELETE SET NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- User notifications
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
-    notification_type notification_type NOT NULL,
+    type notification_type NOT NULL,
+    data JSONB,
     image_url TEXT,
     action_url TEXT, -- Deep link URL
     related_item_id UUID, -- ID of related item (recipe, pantry item, etc.)
     is_read BOOLEAN DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    is_archived BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- =========================================

@@ -308,7 +308,7 @@ router.delete(
       const filePath = path.join(process.cwd(), 'uploads', upload.filename);
       try {
         await fs.unlink(filePath);
-      } catch (fileError) {
+      } catch (_fileError) {
         // File might already be deleted, continue with database cleanup
         console.warn(`Failed to delete file: ${filePath}`);
       }

@@ -3,6 +3,14 @@ import { PantryItem } from '@/types';
 import { AppError } from '@/utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
+function combineQuantity(current: unknown, added: number): string {
+  const currentNumber = Number(current);
+  if (Number.isFinite(currentNumber)) {
+    return String(currentNumber + added);
+  }
+  return String(added);
+}
+
 export class PantryModel {
   /**
    * Get all pantry items for a user
@@ -49,10 +57,9 @@ export class PantryModel {
       const { data: item, error } = await supabase
         .from('pantry_items')
         .update({
-          quantity: existingItem.quantity + itemData.quantity,
+          quantity: combineQuantity(existingItem.quantity, itemData.quantity),
           unit: itemData.unit,
-          category: itemData.category || existingItem.category,
-          expiry_date: itemData.expiryDate || existingItem.expiry_date,
+          expiration_date: itemData.expiryDate || existingItem.expiration_date,
           notes: itemData.notes || existingItem.notes,
           updated_at: new Date().toISOString()
         })
@@ -73,10 +80,9 @@ export class PantryModel {
           id: uuidv4(),
           user_id: userId,
           name: itemData.name,
-          quantity: itemData.quantity,
+          quantity: String(itemData.quantity),
           unit: itemData.unit,
-          category: itemData.category,
-          expiry_date: itemData.expiryDate,
+          expiration_date: itemData.expiryDate ?? null,
           notes: itemData.notes
         })
         .select()
@@ -149,11 +155,21 @@ export class PantryModel {
   static async getItemsByCategory(userId: string, category: string): Promise<PantryItem[]> {
     const supabase = createClient();
 
+    const { data: categoryRow } = await supabase
+      .from('pantry_categories')
+      .select('id')
+      .eq('name', category)
+      .maybeSingle();
+
+    if (!categoryRow) {
+      return [];
+    }
+
     const { data: items, error } = await supabase
       .from('pantry_items')
       .select('*')
       .eq('user_id', userId)
-      .eq('category', category)
+      .eq('category_id', categoryRow.id)
       .order('name');
 
     if (error) {
@@ -175,9 +191,9 @@ export class PantryModel {
       .from('pantry_items')
       .select('*')
       .eq('user_id', userId)
-      .not('expiry_date', 'is', null)
-      .lte('expiry_date', cutoffDate.toISOString().split('T')[0])
-      .order('expiry_date');
+      .not('expiration_date', 'is', null)
+      .lte('expiration_date', cutoffDate.toISOString().split('T')[0])
+      .order('expiration_date');
 
     if (error) {
       throw new AppError('Failed to fetch expiring items', 500);
@@ -226,11 +242,11 @@ export class PantryModel {
     // Get unique categories
     const { data: categories } = await supabase
       .from('pantry_items')
-      .select('category')
+      .select('category_id')
       .eq('user_id', userId)
-      .not('category', 'is', null);
+      .not('category_id', 'is', null);
 
-    const uniqueCategories = new Set(categories?.map(item => item.category));
+    const uniqueCategories = new Set(categories?.map(item => item.category_id));
 
     // Get expiring items (within 7 days)
     const expiringItems = await this.getExpiringItems(userId, 7);
@@ -241,8 +257,8 @@ export class PantryModel {
       .from('pantry_items')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .not('expiry_date', 'is', null)
-      .lt('expiry_date', today);
+      .not('expiration_date', 'is', null)
+      .lt('expiration_date', today);
 
     return {
       totalItems: totalItems || 0,
@@ -270,22 +286,23 @@ export class PantryModel {
       throw new AppError('Pantry item not found', 404);
     }
 
-    if (item.quantity < quantity) {
+    const currentQuantity = Number(item.quantity);
+    if (!Number.isFinite(currentQuantity) || currentQuantity < quantity) {
       throw new AppError('Insufficient quantity in pantry', 400);
     }
 
-    const newQuantity = item.quantity - quantity;
+    const newQuantity = currentQuantity - quantity;
 
     if (newQuantity === 0) {
       // Delete item if quantity becomes 0
       await this.deletePantryItem(userId, itemId);
-      return { ...item, quantity: 0 };
+      return { ...item, quantity: '0' };
     } else {
       // Update quantity
       const { data: updatedItem, error } = await supabase
         .from('pantry_items')
         .update({
-          quantity: newQuantity,
+          quantity: String(newQuantity),
           updated_at: new Date().toISOString()
         })
         .eq('id', itemId)
