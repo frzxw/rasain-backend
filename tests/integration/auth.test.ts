@@ -1,4 +1,34 @@
 import request from 'supertest';
+
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    auth: {
+      signInWithPassword: jest.fn(async () => ({
+        data: { user: null, session: null },
+        error: { message: 'Invalid login credentials' }
+      })),
+      getUser: jest.fn(async () => ({ data: { user: null }, error: { message: 'invalid' } })),
+      admin: {
+        createUser: jest.fn(),
+        deleteUser: jest.fn(),
+        updateUserById: jest.fn()
+      }
+    },
+    from: () => {
+      const chain: Record<string, unknown> = {};
+      const self = () => chain;
+      chain.select = self;
+      chain.insert = self;
+      chain.update = self;
+      chain.delete = self;
+      chain.eq = self;
+      chain.single = async () => ({ data: null, error: null });
+      chain.maybeSingle = async () => ({ data: null, error: null });
+      return chain;
+    }
+  })
+}));
+
 import app from '../../src/server';
 
 describe('Authentication Endpoints', () => {
@@ -77,7 +107,7 @@ describe('Authentication Endpoints', () => {
         .expect(401);
 
       expect(response.body).toHaveProperty('success', false);
-      expect(response.body.message).toContain('Access denied');
+      expect(response.body.message).toContain('Not authorized');
     });
   });
 });

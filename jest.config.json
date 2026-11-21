@@ -1,6 +1,7 @@
 {
   "preset": "ts-jest",
   "testEnvironment": "node",
+  "setupFiles": ["<rootDir>/tests/setupEnv.ts"],
   "setupFilesAfterEnv": ["<rootDir>/tests/setup.ts"],
   "testMatch": [
     "<rootDir>/tests/**/*.test.ts",
@@ -18,8 +19,8 @@
     "lcov",
     "html"
   ],
-  "moduleNameMapping": {
-    "@/(.*)": "<rootDir>/src/$1"
+  "moduleNameMapper": {
+    "^@/(.*)$": "<rootDir>/src/$1"
   },
   "testPathIgnorePatterns": [
     "<rootDir>/node_modules/",
