@@ -75,14 +75,17 @@ export const errorHandler = (err: any, req: Request, res: Response, _next: NextF
     error = { message, statusCode: 429 };
   }
 
-  res.status(error.statusCode || 500).json({
+  const statusCode = error.statusCode || 500;
+  const message = error.message || 'Server Error';
+
+  res.status(statusCode).json({
     success: false,
+    message,
     error: {
-      message: error.message || 'Server Error',
-      ...(process.env.NODE_ENV === 'development' && {
-        stack: err.stack,
-        details: error
-      })
+      message,
+      ...(process.env.NODE_ENV === 'development' && err.stack
+        ? { stack: err.stack }
+        : {})
     }
   });
 };
@@ -93,7 +96,12 @@ export const notFound = (req: Request, _res: Response, next: NextFunction): void
   next(error);
 };
 
-// Async error wrapper
-export const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
+type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown;
+
+export const asyncHandler = (fn: AsyncRoute) => (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };

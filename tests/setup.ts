@@ -1,8 +1,11 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load test environment variables
-dotenv.config({ 
+// Load test environment variables. .env is the documented local file.
+dotenv.config({
+  path: path.join(__dirname, '..', '.env')
+});
+dotenv.config({
   path: path.join(__dirname, '..', '.env.local')
 });
 
@@ -21,9 +24,7 @@ global.console = {
   error: jest.fn(),
 };
 
-// Global test utilities
-global.testHelpers = {
-  // Helper to create test users
+const testHelpers = {
   createTestUser: async () => {
     return {
       id: 'test-user-id',
@@ -31,10 +32,7 @@ global.testHelpers = {
       name: 'Test User'
     };
   },
-
-  // Helper to clean up test data
   cleanupTestData: async () => {
-    // Implementation for cleaning up test data
     console.log('Cleaning up test data...');
   }
 };
@@ -46,5 +44,5 @@ beforeAll(async () => {
 
 afterAll(async () => {
   console.log('🧹 Cleaning up test environment...');
-  await global.testHelpers.cleanupTestData();
+  await testHelpers.cleanupTestData();
 });

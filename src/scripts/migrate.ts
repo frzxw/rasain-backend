@@ -1,64 +1,92 @@
 import { createClient } from '../config/database';
 import { logger } from '../utils/logger';
+import { ensureAccount } from './demoAccounts';
 import fs from 'fs/promises';
 import path from 'path';
+import { Client } from 'pg';
+
+function adminCredentials(): { email: string; password: string; name: string } {
+  const email = process.env.ADMIN_EMAIL?.trim();
+  const password = process.env.ADMIN_PASSWORD;
+  const name = process.env.ADMIN_NAME?.trim() || 'Admin';
+
+  if (!email || !password) {
+    throw new Error(
+      'Set ADMIN_EMAIL and ADMIN_PASSWORD in your environment before creating the admin user. See .env.example.'
+    );
+  }
+
+  if (password.length < 8) {
+    throw new Error('ADMIN_PASSWORD must be at least 8 characters.');
+  }
+
+  return { email, password, name };
+}
 
 async function runMigrations(): Promise<void> {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error(
+      'Set DATABASE_URL before migrating. Use the direct Postgres connection string from your Supabase project. See .env.example.'
+    );
+  }
+
+  const client = new Client({ connectionString: databaseUrl });
+
   try {
     logger.info('🚀 Starting database migrations...');
+    await client.connect();
 
-    const supabase = createClient();
-
-    // Read the schema.sql file
-    const schemaPath = path.join(process.cwd(), 'schema.sql');
+    const schemaPath = path.join(__dirname, 'schema.sql');
     const schema = await fs.readFile(schemaPath, 'utf-8');
 
-    // Split the schema into individual statements
-    const statements = schema
-      .split(';')
-      .map(statement => statement.trim())
-      .filter(statement => statement.length > 0 && !statement.startsWith('--'));
-
-    logger.info(`📄 Found ${statements.length} SQL statements to execute`);
-
-    // Execute each statement
-    for (let i = 0; i < statements.length; i++) {
-      const statement = statements[i];
-      
-      try {
-        logger.info(`⚡ Executing statement ${i + 1}/${statements.length}`);
-        
-        // Use raw SQL execution for schema creation
-        const { error } = await supabase.rpc('exec_sql', { sql_statement: statement });
-        
-        if (error) {
-          logger.error(`❌ Error executing statement ${i + 1}:`, error);
-          logger.error(`Statement: ${statement}`);
-          
-          // Continue with next statement for non-critical errors
-          if (!error.message.includes('already exists')) {
-            throw error;
-          } else {
-            logger.warn(`⚠️  Skipping statement ${i + 1} (already exists)`);
-          }
-        } else {
-          logger.info(`✅ Statement ${i + 1} executed successfully`);
-        }
-      } catch (statementError) {
-        logger.error(`❌ Failed to execute statement ${i + 1}:`, statementError);
-        logger.error(`Statement: ${statement}`);
-        throw statementError;
-      }
+    const existing = await client.query(`SELECT to_regclass('public.users') AS name`);
+    if (existing.rows[0]?.name) {
+      logger.info('Schema already present. Skipping schema.sql.');
+    } else {
+      await client.query(schema);
+      logger.info('✅ Schema applied from src/scripts/schema.sql');
     }
 
+    await applyCompatibilityPatches(client);
     logger.info('✅ Database migrations completed successfully!');
-
-    // Verify key tables exist
     await verifyTables();
-
   } catch (error) {
     logger.error('❌ Database migration failed:', error);
     process.exit(1);
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
+async function applyCompatibilityPatches(client: Client): Promise<void> {
+  const notifications = await client.query(`SELECT to_regclass('public.notifications') AS name`);
+  if (!notifications.rows[0]?.name) {
+    return;
+  }
+
+  await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data JSONB`);
+  await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT false`);
+  await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP`);
+
+  await client.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'notifications' AND column_name = 'notification_type'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'notifications' AND column_name = 'type'
+      ) THEN
+        ALTER TABLE notifications RENAME COLUMN notification_type TO type;
+      END IF;
+    END $$;
+  `);
+
+  const extraTypes = ['recipe_like', 'recipe_comment', 'recipe_share', 'follow', 'reminder'];
+  for (const value of extraTypes) {
+    await client.query(`ALTER TYPE notification_type ADD VALUE IF NOT EXISTS '${value}'`);
   }
 }
 
@@ -72,8 +100,8 @@ async function verifyTables(): Promise<void> {
       'users',
       'user_profiles', 
       'recipes',
-      'ingredients',
-      'recipe_steps',
+      'recipe_ingredients',
+      'recipe_instructions',
       'pantry_items',
       'community_posts',
       'post_comments',
@@ -112,59 +140,21 @@ async function createAdminUser(): Promise<void> {
   try {
     logger.info('👤 Creating admin user...');
 
-    const supabase = createClient();
+    const { email, password, name } = adminCredentials();
+    const account = await ensureAccount({
+      email,
+      password,
+      name,
+      role: 'admin'
+    });
 
-    // Check if admin user already exists
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', 'admin@rasain.com')
-      .single();
-
-    if (existingUser) {
+    if (!account.created) {
       logger.info('⚠️  Admin user already exists');
       return;
     }
 
-    // Create admin user
-    const adminUserId = '00000000-0000-0000-0000-000000000001';
-    const bcrypt = require('bcryptjs');
-    const passwordHash = await bcrypt.hash('admin123!', 12);
-
-    const { error: userError } = await supabase
-      .from('users')
-      .insert({
-        id: adminUserId,
-        email: 'admin@rasain.com',
-        password_hash: passwordHash,
-        email_verified: true,
-        phone_verified: false
-      });
-
-    if (userError) {
-      throw userError;
-    }
-
-    // Create admin profile
-    const { error: profileError } = await supabase
-      .from('user_profiles')
-      .insert({
-        id: adminUserId,
-        name: 'Admin User',
-        saved_recipes_count: 0,
-        posts_count: 0,
-        is_notifications_enabled: true,
-        language: 'en',
-        is_dark_mode_enabled: false
-      });
-
-    if (profileError) {
-      throw profileError;
-    }
-
-    logger.info('✅ Admin user created successfully!');
-    logger.info('📧 Email: admin@rasain.com');
-    logger.info('🔑 Password: admin123!');
+    logger.info('✅ Admin user created successfully');
+    logger.info('📧 Email comes from ADMIN_EMAIL. The password is not logged.');
 
   } catch (error) {
     logger.error('❌ Failed to create admin user:', error);

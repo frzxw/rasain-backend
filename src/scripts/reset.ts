@@ -27,7 +27,7 @@ async function resetDatabase(): Promise<void> {
     logger.info('');
     logger.info('🎉 Your Rasain database is now ready with:');
     logger.info('   - Fresh schema and tables');
-    logger.info('   - Admin user (admin@rasain.com / admin123!)');
+    logger.info('   - Admin user from ADMIN_EMAIL (password stays in your env)');
     logger.info('   - Sample users and recipes');
     logger.info('   - Sample pantry items');
     logger.info('   - Sample community posts');

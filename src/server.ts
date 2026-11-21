@@ -1,13 +1,10 @@
+import '@/config/loadEnv';
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
-import dotenv from 'dotenv';
 import path from 'path';
-
-// Load environment variables
-dotenv.config({ path: '.env.local' });
 
 // Import middleware and routes
 import { errorHandler, notFound } from '@/middleware/errorMiddleware';
@@ -32,9 +29,15 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS configuration
+// A wildcard origin cannot be combined with credentials. Reflect the
+// request origin unless CORS_ORIGIN lists explicit hosts.
+const configuredOrigins = process.env.CORS_ORIGIN
+  ?.split(',')
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0 && origin !== '*');
+
 const corsOptions: cors.CorsOptions = {
-  origin: process.env.CORS_ORIGIN?.split(',') || '*',
+  origin: configuredOrigins && configuredOrigins.length > 0 ? configuredOrigins : true,
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

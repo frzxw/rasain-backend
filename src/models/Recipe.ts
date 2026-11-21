@@ -78,13 +78,13 @@ export class RecipeModel {
         id: uuidv4(),
         recipe_id: recipeId,
         name: ing.name,
-        amount: ing.amount,
+        quantity: ing.amount,
         unit: ing.unit,
         notes: ing.notes
       }));
 
       const { error: ingredientsError } = await supabase
-        .from('ingredients')
+        .from('recipe_ingredients')
         .insert(ingredients);
 
       if (ingredientsError) {
@@ -100,18 +100,18 @@ export class RecipeModel {
         id: uuidv4(),
         recipe_id: recipeId,
         step_number: step.stepNumber,
-        instruction: step.instruction,
+        instruction_text: step.instruction,
         estimated_time: step.estimatedTime,
         image_url: step.imageUrl
       }));
 
       const { error: stepsError } = await supabase
-        .from('recipe_steps')
+        .from('recipe_instructions')
         .insert(steps);
 
       if (stepsError) {
         // Cleanup: delete recipe and ingredients if steps creation fails
-        await supabase.from('ingredients').delete().eq('recipe_id', recipeId);
+        await supabase.from('recipe_ingredients').delete().eq('recipe_id', recipeId);
         await supabase.from('recipes').delete().eq('id', recipeId);
         throw new AppError('Failed to create recipe steps', 500);
       }
@@ -144,7 +144,7 @@ export class RecipeModel {
 
     // Get ingredients
     const { data: ingredients, error: ingredientsError } = await supabase
-      .from('ingredients')
+        .from('recipe_ingredients')
       .select('*')
       .eq('recipe_id', id)
       .order('created_at');
@@ -155,7 +155,7 @@ export class RecipeModel {
 
     // Get steps
     const { data: steps, error: stepsError } = await supabase
-      .from('recipe_steps')
+      .from('recipe_instructions')
       .select('*')
       .eq('recipe_id', id)
       .order('step_number');
@@ -348,12 +348,12 @@ export class RecipeModel {
       throw new AppError('Recipe not found or access denied', 404);
     }    // Delete ingredients and steps (cascade delete should handle this, but we check anyway)
     const { error: _ingredientsError } = await supabase
-      .from('ingredients')
+        .from('recipe_ingredients')
       .delete()
       .eq('recipe_id', id);
 
     const { error: _stepsError } = await supabase
-      .from('recipe_steps')
+      .from('recipe_instructions')
       .delete()
       .eq('recipe_id', id);
 

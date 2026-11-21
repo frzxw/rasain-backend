@@ -95,8 +95,8 @@ extendedLogger.logError = (error: Error, req: Request | null = null): void => {
   if (req) {
     errorData.method = req.method;
     errorData.url = req.url;
-    errorData.headers = req.headers;
-    errorData.body = req.body;
+    errorData.headers = redact(req.headers);
+    errorData.body = redact(req.body);
   }
   
   winstonLogger.error('Application Error', errorData);
@@ -117,6 +117,26 @@ extendedLogger.logAuth = (action: string, userId: string | null = null, details:
     ...details
   });
 };
+
+function redact(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redact);
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (/password|token|authorization|secret|api[-_]?key|cookie/i.test(key)) {
+      redacted[key] = '[redacted]';
+    } else {
+      redacted[key] = redact(entry);
+    }
+  }
+  return redacted;
+}
 
 // Custom error class for application errors
 export class AppError extends Error {

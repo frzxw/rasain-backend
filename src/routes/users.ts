@@ -7,6 +7,53 @@ import logger from '@/utils/logger';
 
 const router = express.Router();
 
+// @desc    Get user dashboard data
+// @route   GET /api/v1/users/dashboard
+// @access  Private
+// Registered before /:id so "dashboard" is not treated as a user id.
+router.get('/dashboard', protect, asyncHandler(async (req: Request, res: Response) => {
+  const { data: dashboardData, error } = await supabase
+    .from('user_dashboard')
+    .select('*')
+    .eq('id', req.user!.id)
+    .single();
+
+  if (error) {
+    logger.error('Dashboard data fetch error:', error);
+    throw new AppError('Failed to fetch dashboard data', 500);
+  }
+
+  const { data: recentRecipes } = await supabase
+    .from('recipes')
+    .select('id, name, image_url, created_at')
+    .eq('created_by', req.user!.id)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const { data: expiring_items } = await supabase.rpc(
+    'get_expiring_items',
+    {
+      user_uuid: req.user!.id,
+      days_ahead: 7
+    }
+  );
+
+  const response: ApiResponse<{
+    dashboard: any;
+    recent_recipes: any[];
+    expiring_items: any[];
+  }> = {
+    success: true,
+    data: {
+      dashboard: dashboardData,
+      recent_recipes: recentRecipes || [],
+      expiring_items: expiring_items || []
+    }
+  };
+
+  res.json(response);
+}));
+
 // @desc    Get user profile by ID
 // @route   GET /api/v1/users/:id
 // @access  Public
@@ -170,54 +217,6 @@ router.get('/:id/posts', optionalAuth, asyncHandler(async (req: Request, res: Re
       page: Number(page),
       limit: Number(limit),
       total: processedPosts.length
-    }
-  };
-
-  res.json(response);
-}));
-
-// @desc    Get user dashboard data
-// @route   GET /api/v1/users/dashboard
-// @access  Private
-router.get('/dashboard', protect, asyncHandler(async (req: Request, res: Response) => {
-  // Get user dashboard data using the database view
-  const { data: dashboardData, error } = await supabase
-    .from('user_dashboard')
-    .select('*')
-    .eq('id', req.user!.id)
-    .single();
-
-  if (error) {
-    logger.error('Dashboard data fetch error:', error);
-    throw new AppError('Failed to fetch dashboard data', 500);
-  }
-
-  // Get recent activities
-  const { data: recentRecipes } = await supabase
-    .from('recipes')
-    .select('id, name, image_url, created_at')
-    .eq('created_by', req.user!.id)
-    .order('created_at', { ascending: false })
-    .limit(5);
-
-  const { data: expiring_items } = await supabase.rpc(
-    'get_expiring_items',
-    {
-      user_uuid: req.user!.id,
-      days_ahead: 7
-    }
-  );
-
-  const response: ApiResponse<{
-    dashboard: any;
-    recent_recipes: any[];
-    expiring_items: any[];
-  }> = {
-    success: true,
-    data: {
-      dashboard: dashboardData,
-      recent_recipes: recentRecipes || [],
-      expiring_items: expiring_items || []
     }
   };
 

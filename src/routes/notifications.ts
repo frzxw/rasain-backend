@@ -196,6 +196,88 @@ router.post(
 );
 
 /**
+ * @desc    Mark all notifications as read
+ * @route   PATCH /api/v1/notifications/mark-all-read
+ * @access  Private
+ * Registered before /:id so the literal path is not captured as an id.
+ */
+router.patch(
+  '/mark-all-read',
+  auth,
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('notifications')
+        .update({
+          is_read: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', req.user!.id)
+        .eq('is_read', false);
+
+      if (error) {
+        throw new AppError('Failed to mark notifications as read', 500);
+      }
+
+      const response: ApiResponse<{ message: string }> = {
+        success: true,
+        message: 'All notifications marked as read',
+        data: { message: 'All notifications marked as read successfully' }
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @desc    Archive multiple notifications
+ * @route   PATCH /api/v1/notifications/bulk-archive
+ * @access  Private
+ */
+router.patch(
+  '/bulk-archive',
+  auth,
+  validateRequest({
+    body: Joi.object({
+      notificationIds: Joi.array().items(Joi.string().uuid()).required()
+    })
+  }),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const { notificationIds } = req.body;
+
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('notifications')
+        .update({
+          is_archived: true,
+          updated_at: new Date().toISOString()
+        })
+        .in('id', notificationIds)
+        .eq('user_id', req.user!.id);
+
+      if (error) {
+        throw new AppError('Failed to archive notifications', 500);
+      }
+
+      const response: ApiResponse<{ message: string }> = {
+        success: true,
+        message: 'Notifications archived successfully',
+        data: { message: `${notificationIds.length} notifications archived successfully` }
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * @desc    Update notification (mark as read/unread, archive)
  * @route   PATCH /api/v1/notifications/:id
  * @access  Private
@@ -253,43 +335,6 @@ router.patch(
 );
 
 /**
- * @desc    Mark all notifications as read
- * @route   PATCH /api/v1/notifications/mark-all-read
- * @access  Private
- */
-router.patch(
-  '/mark-all-read',
-  auth,
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('notifications')
-        .update({
-          is_read: true,
-          updated_at: new Date().toISOString()
-        })
-        .eq('user_id', req.user!.id)
-        .eq('is_read', false);
-
-      if (error) {
-        throw new AppError('Failed to mark notifications as read', 500);
-      }
-
-      const response: ApiResponse<{ message: string }> = {
-        success: true,
-        message: 'All notifications marked as read',
-        data: { message: 'All notifications marked as read successfully' }
-      };
-
-      res.status(200).json(response);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-/**
  * @desc    Delete notification
  * @route   DELETE /api/v1/notifications/:id
  * @access  Private
@@ -316,50 +361,6 @@ router.delete(
         success: true,
         message: 'Notification deleted successfully',
         data: { message: 'Notification deleted successfully' }
-      };
-
-      res.status(200).json(response);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-/**
- * @desc    Archive multiple notifications
- * @route   PATCH /api/v1/notifications/bulk-archive
- * @access  Private
- */
-router.patch(
-  '/bulk-archive',
-  auth,
-  validateRequest({
-    body: Joi.object({
-      notificationIds: Joi.array().items(Joi.string().uuid()).required()
-    })
-  }),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const { notificationIds } = req.body;
-
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('notifications')
-        .update({
-          is_archived: true,
-          updated_at: new Date().toISOString()
-        })
-        .in('id', notificationIds)
-        .eq('user_id', req.user!.id);
-
-      if (error) {
-        throw new AppError('Failed to archive notifications', 500);
-      }
-
-      const response: ApiResponse<{ message: string }> = {
-        success: true,
-        message: 'Notifications archived successfully',
-        data: { message: `${notificationIds.length} notifications archived successfully` }
       };
 
       res.status(200).json(response);

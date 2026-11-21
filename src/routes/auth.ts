@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import { supabase } from '@/config/database';
 import { asyncHandler, AppError } from '@/middleware/errorMiddleware';
 import { validate } from '@/middleware/validation';
-import { registerSchema, loginSchema, updateProfileSchema } from '@/middleware/validation';
+import { registerSchema, loginSchema, updateProfileSchema, forgotPasswordSchema, resetPasswordSchema } from '@/middleware/validation';
 import { protect } from '@/middleware/auth';
 import { ApiResponse, UserProfile } from '@/types';
 import logger from '@/utils/logger';
@@ -14,15 +14,9 @@ const router = express.Router();
 // @access  Public
 router.post('/register', validate(registerSchema), asyncHandler(async (req: Request, res: Response) => {
   const { name, email, password, phone } = req.body;
-  // Check if user already exists
-  const { data: existingUsers } = await supabase.auth.admin.listUsers();
-  const existingUser = existingUsers?.users?.find(user => user.email === email);
-  
-  if (existingUser) {
-    throw new AppError('User already exists with this email', 400);
-  }
 
-  // Create user in Supabase Auth
+  // Create user in Supabase Auth. A duplicate email comes back as an error,
+  // which avoids listing every auth user on each registration.
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,
     password,
@@ -30,21 +24,40 @@ router.post('/register', validate(registerSchema), asyncHandler(async (req: Requ
       name,
       phone
     },
-    email_confirm: false // Set to true if you want email confirmation
+    email_confirm: false
   });
 
-  if (authError) {
+  if (authError || !authData.user) {
+    const authMessage = authError?.message?.toLowerCase() ?? '';
+    if (authMessage.includes('already') || authMessage.includes('registered')) {
+      throw new AppError('User already exists with this email', 400);
+    }
     logger.error('Auth registration error:', authError);
     throw new AppError('Failed to create user account', 500);
   }
 
-  // Create user profile
+  const userId = authData.user.id;
+
+  // user_profiles.id references public.users, so the row has to exist first.
+  const { error: userError } = await supabase.from('users').insert({
+    id: userId,
+    email,
+    phone: phone ?? null,
+    email_verified: false,
+    phone_verified: false
+  });
+
+  if (userError) {
+    logger.error('User row creation error:', userError);
+    await supabase.auth.admin.deleteUser(userId);
+    throw new AppError('Failed to create user account', 500);
+  }
+
   const { data: profile, error: profileError } = await supabase
     .from('user_profiles')
     .insert({
-      id: authData.user.id,
+      id: userId,
       name,
-      phone,
       saved_recipes_count: 0,
       posts_count: 0,
       is_notifications_enabled: true,
@@ -56,12 +69,12 @@ router.post('/register', validate(registerSchema), asyncHandler(async (req: Requ
 
   if (profileError) {
     logger.error('Profile creation error:', profileError);
-    // Clean up auth user if profile creation fails
-    await supabase.auth.admin.deleteUser(authData.user.id);
+    await supabase.from('users').delete().eq('id', userId);
+    await supabase.auth.admin.deleteUser(userId);
     throw new AppError('Failed to create user profile', 500);
   }
 
-  logger.logAuth('user_registered', authData.user.id, { email });
+  logger.logAuth('user_registered', userId, { email });
 
   const response: ApiResponse = {
     success: true,
@@ -167,9 +180,34 @@ router.get('/me', protect, asyncHandler(async (req: Request, res: Response) => {
 // @route   PUT /api/v1/auth/profile
 // @access  Private
 router.put('/profile', protect, validate(updateProfileSchema), asyncHandler(async (req: Request, res: Response) => {
-  const updates = req.body;
+  const { phone, ...profileUpdates } = req.body;
+  const allowedProfileFields = [
+    'name',
+    'image_url',
+    'is_notifications_enabled',
+    'language',
+    'is_dark_mode_enabled'
+  ] as const;
+  const updates: Record<string, unknown> = {};
+  for (const field of allowedProfileFields) {
+    if (profileUpdates[field] !== undefined) {
+      updates[field] = profileUpdates[field];
+    }
+  }
 
-  // Update user profile
+  if (phone !== undefined) {
+    const { error: phoneError } = await supabase
+      .from('users')
+      .update({ phone, updated_at: new Date().toISOString() })
+      .eq('id', req.user!.id);
+
+    if (phoneError) {
+      logger.error('Phone update error:', phoneError);
+      throw new AppError('Failed to update profile', 500);
+    }
+  }
+
+  // Update user profile. Only columns that exist on user_profiles are written.
   const { data: profile, error } = await supabase
     .from('user_profiles')
     .update({
@@ -214,12 +252,8 @@ router.post('/logout', protect, asyncHandler(async (req: Request, res: Response)
 // @desc    Request password reset
 // @route   POST /api/v1/auth/forgot-password
 // @access  Public
-router.post('/forgot-password', asyncHandler(async (req: Request, res: Response) => {
+router.post('/forgot-password', validate(forgotPasswordSchema), asyncHandler(async (req: Request, res: Response) => {
   const { email } = req.body;
-
-  if (!email) {
-    throw new AppError('Email is required', 400);
-  }
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${process.env.FRONTEND_URL}/reset-password`
@@ -243,19 +277,27 @@ router.post('/forgot-password', asyncHandler(async (req: Request, res: Response)
 // @desc    Reset password
 // @route   POST /api/v1/auth/reset-password
 // @access  Public
-router.post('/reset-password', asyncHandler(async (req: Request, res: Response) => {
+router.post('/reset-password', validate(resetPasswordSchema), asyncHandler(async (req: Request, res: Response) => {
   const { token, password } = req.body;
 
-  if (!token || !password) {
-    throw new AppError('Token and password are required', 400);
-  }
-
-  const { data, error } = await supabase.auth.updateUser({
-    password: password
+  // The service-role client has no user session, so updateUser() never
+  // applied the new password. The recovery token identifies the account.
+  const { data, error } = await supabase.auth.verifyOtp({
+    token_hash: token,
+    type: 'recovery'
   });
 
-  if (error) {
+  if (error || !data.user) {
     logger.error('Password reset error:', error);
+    throw new AppError('Failed to reset password', 400);
+  }
+
+  const { error: updateError } = await supabase.auth.admin.updateUserById(data.user.id, {
+    password
+  });
+
+  if (updateError) {
+    logger.error('Password reset error:', updateError);
     throw new AppError('Failed to reset password', 400);
   }
 
